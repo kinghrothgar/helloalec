@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+
+# Lists the newest screenshots in ~/Pictures/screenshots for the screenshots
+# skill. Prints one TSV line per file, newest first: mtime, absolute path.
+# macOS only; exits non-zero if the folder is missing or holds no images.
+
+set -euo pipefail
+
+usage() {
+	echo "usage: ${0##*/} [-n N]" >&2
+	echo "  -n N  number of most recent screenshots to list (default 1)" >&2
+	exit 2
+}
+
+n=1
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	-n)
+		[[ $# -ge 2 ]] || usage
+		n="$2"
+		shift
+		;;
+	-h | --help) usage ;;
+	*) usage ;;
+	esac
+	shift
+done
+
+if ! [[ "$n" =~ ^[0-9]+$ ]] || [[ "$n" -lt 1 ]]; then
+	echo "N must be a positive integer, got: $n" >&2
+	exit 2
+fi
+
+if [[ "$(uname)" != "Darwin" ]]; then
+	echo "screenshot-list only supports macOS" >&2
+	exit 1
+fi
+
+dir="$HOME/Pictures/screenshots"
+if [[ ! -d "$dir" ]]; then
+	echo "screenshot folder not found: $dir" >&2
+	exit 1
+fi
+
+listing=$(
+	find "$dir" -maxdepth 1 -type f \( \
+		-iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o \
+		-iname '*.gif' -o -iname '*.webp' -o -iname '*.heic' \
+		\) -exec /usr/bin/stat -f '%m%t%N' {} + |
+		sort -rn |
+		head -n "$n"
+)
+
+if [[ -z "$listing" ]]; then
+	echo "no screenshots found in $dir" >&2
+	exit 1
+fi
+
+while IFS=$'\t' read -r epoch path; do
+	printf '%s\t%s\n' "$(/bin/date -r "$epoch" '+%Y-%m-%d %H:%M:%S')" "$path"
+done <<<"$listing"
